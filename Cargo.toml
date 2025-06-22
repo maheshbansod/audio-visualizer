@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 cpal = "0.16.0"
+rustfft = "6.4.0"
