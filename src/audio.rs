@@ -12,6 +12,7 @@ use crate::app::TerminalMessage;
 pub struct FreqData {
     pub data: Vec<(f64, f64)>,
     pub peak_frequency: u32,
+    pub fundamental_frequency: u32,
     pub max_magnitude: f64,
     pub sample_rate: u32,
     pub samples_n: usize,
@@ -19,6 +20,7 @@ pub struct FreqData {
 }
 // type FreqData = Vec<(f64, f64)>;
 
+#[derive(Debug)]
 pub struct AudioListener {
     freq_dump_channel: Sender<FreqData>,
     terminal_msg_receiver: Receiver<TerminalMessage>,
@@ -35,6 +37,7 @@ impl AudioListener {
         }
     }
 
+    #[tracing::instrument]
     pub fn run(&self) -> Result<()> {
         let host = cpal::default_host();
         let input_device = host
@@ -50,9 +53,10 @@ impl AudioListener {
         let config = supported_input_config.config();
         let sample_rate = config.sample_rate.0;
         let channels = config.channels as usize;
-        let rms_window_size = 1024;
+        let rms_window_size = 4096;
         let samples: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(vec![]));
         let freq_dump_channel = self.freq_dump_channel.clone();
+        let epsilon = 1e-10;
         let stream = input_device
             .build_input_stream(
                 &config,
@@ -74,8 +78,43 @@ impl AudioListener {
                                 .collect::<Vec<_>>();
                             fft.process(&mut buffer);
 
-                            // max freq
                             let max_k = n / 2 + 1;
+                            let mut downsampled_spectra = vec![];
+                            let mut smallest_len = 1000000;
+                            for i in 2..5 {
+                                let downsampled_spectrum = (0..max_k)
+                                    .step_by(i)
+                                    .map(|j| buffer[j].norm().max(epsilon))
+                                    .collect::<Vec<_>>();
+                                let spec_len = downsampled_spectrum.len();
+                                downsampled_spectra.push(downsampled_spectrum);
+                                if spec_len < smallest_len {
+                                    smallest_len = spec_len;
+                                }
+                            }
+                            let mut log_product_spectrum = buffer[0..smallest_len]
+                                .iter()
+                                .map(|b| {
+                                    let m = b.norm();
+                                    20.0 * m.max(epsilon).log10()
+                                })
+                                .collect::<Vec<_>>();
+                            let mut max_product_spectrum_i = 0;
+                            let mut max_product_spectrum = f32::NEG_INFINITY;
+                            for i in 0..smallest_len {
+                                let mut log_psi = log_product_spectrum[i];
+                                for spectrum in downsampled_spectra.iter() {
+                                    log_psi += spectrum[i];
+                                }
+                                log_product_spectrum[i] = log_psi;
+                                if log_psi > max_product_spectrum {
+                                    max_product_spectrum_i = i;
+                                    max_product_spectrum = log_psi;
+                                }
+                            }
+                            let fundamental_frequency =
+                                max_product_spectrum_i as u32 * sample_rate / n as u32;
+
                             let mut max_magnitude_freq = 0;
                             let mut max_magnitude = buffer[0].norm();
                             let mut freq_data = vec![];
@@ -95,6 +134,7 @@ impl AudioListener {
                                     data: freq_data,
                                     max_magnitude: max_magnitude as f64,
                                     peak_frequency: max_magnitude_freq,
+                                    fundamental_frequency,
                                     samples_n: n,
                                     sample_rate,
                                     time_domain_samples: samples.clone(),

@@ -36,6 +36,7 @@ impl App {
                 data: vec![],
                 max_magnitude: 0.0,
                 peak_frequency: 0,
+                fundamental_frequency: 0,
                 samples_n: 0,
                 sample_rate: 0,
                 time_domain_samples: vec![],
@@ -96,7 +97,7 @@ impl App {
                 let layout = Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
-                        Constraint::Length(4),
+                        Constraint::Length(5),
                         Constraint::Ratio(1, 2),
                         Constraint::Ratio(1, 2),
                     ])
@@ -104,7 +105,7 @@ impl App {
                 let top = layout[0];
                 let middle = layout[1];
                 let bottom = layout[2];
-                let note = get_note_from_frequency(self.freq_data.peak_frequency);
+                let note = get_note_from_frequency(self.freq_data.fundamental_frequency);
                 let peak_freq_text = format!("Peak frequency: {}", self.freq_data.peak_frequency);
                 let max_magnitude_text = format!("Max Magnitude: {}", self.freq_data.max_magnitude);
                 let text_left = Text::from(vec![
@@ -114,7 +115,11 @@ impl App {
                         "Note: unknown".to_string()
                     })
                     .centered(),
-                    Line::from(peak_freq_text).centered(),
+                    Line::from(peak_freq_text),
+                    Line::from(format!(
+                        "Fundamental frequency (HPS): {}",
+                        self.freq_data.fundamental_frequency
+                    )),
                 ])
                 .centered();
                 let top_layout = Layout::default()
