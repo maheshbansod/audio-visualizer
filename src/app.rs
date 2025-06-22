@@ -7,7 +7,7 @@ use color_eyre::eyre::Result;
 use ratatui::{
     DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode},
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols,
     text::{Line, Span, Text},
@@ -38,6 +38,7 @@ impl App {
                 peak_frequency: 0,
                 samples_n: 0,
                 sample_rate: 0,
+                time_domain_samples: vec![],
             },
             screen: AppScreen::Main,
         }
@@ -94,14 +95,19 @@ impl App {
             AppScreen::Main => {
                 let layout = Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .constraints([
+                        Constraint::Length(4),
+                        Constraint::Ratio(1, 2),
+                        Constraint::Ratio(1, 2),
+                    ])
                     .split(frame.area());
                 let top = layout[0];
-                let bottom = layout[1];
+                let middle = layout[1];
+                let bottom = layout[2];
                 let note = get_note_from_frequency(self.freq_data.peak_frequency);
                 let peak_freq_text = format!("Peak frequency: {}", self.freq_data.peak_frequency);
                 let max_magnitude_text = format!("Max Magnitude: {}", self.freq_data.max_magnitude);
-                let text = Text::from(vec![
+                let text_left = Text::from(vec![
                     Line::from(if let Some(note) = note {
                         format!("Note: {note}")
                     } else {
@@ -109,16 +115,86 @@ impl App {
                     })
                     .centered(),
                     Line::from(peak_freq_text).centered(),
-                    Line::from(max_magnitude_text).centered(),
-                    Line::from(format!("Sample rate: {}", self.freq_data.sample_rate)),
                 ])
                 .centered();
-                frame.render_widget(Paragraph::new(text).block(Block::bordered()), top);
-                self.render_freqs(frame, bottom);
+                let top_layout = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .split(top);
+                let text_right = Text::from(vec![
+                    Line::from(format!("Sample rate: {}", self.freq_data.sample_rate)),
+                    Line::from(max_magnitude_text),
+                ]);
+                frame.render_widget(
+                    Paragraph::new(text_left).block(Block::bordered()),
+                    top_layout[0],
+                );
+                frame.render_widget(
+                    Paragraph::new(text_right).block(Block::bordered()),
+                    top_layout[1],
+                );
+                self.render_freqs(frame, middle);
+                self.render_time_domain(frame, bottom);
             }
         }
     }
 
+    fn render_time_domain(&self, frame: &mut Frame, area: Rect) {
+        if self.freq_data.time_domain_samples.len() == 0 {
+            return;
+        }
+        let data = self.freq_data.time_domain_samples.clone();
+        let x_bounds = (0, data.len());
+        let x_labels = vec![
+            Span::styled(
+                format!("{:.2}", x_bounds.0),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:.2}", x_bounds.1),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+        ];
+        let data = data
+            .iter()
+            .enumerate()
+            .map(|(i, d)| (i as f64, *d as f64 * 1000.0))
+            .collect::<Vec<_>>();
+        let datasets = vec![
+            Dataset::default()
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(Color::Cyan))
+                .graph_type(ratatui::widgets::GraphType::Line)
+                .data(&data),
+        ];
+        let y_bounds = (-50.0, 50.0);
+
+        let chart = Chart::new(datasets)
+            .block(
+                Block::bordered()
+                    .title("Time domain")
+                    .title_alignment(ratatui::layout::Alignment::Center),
+            )
+            .x_axis(
+                Axis::default()
+                    .title(format!("Time"))
+                    .style(Style::default().fg(Color::Gray))
+                    .labels(x_labels)
+                    .bounds([x_bounds.0 as f64, x_bounds.1 as f64]),
+            )
+            .y_axis(
+                Axis::default()
+                    .title("Magnitude")
+                    .style(Style::default().fg(Color::Gray))
+                    .labels(vec![
+                        Span::styled(format!("{}", y_bounds.0), Style::default()),
+                        Span::styled(format!("{}", y_bounds.1), Style::default()),
+                    ])
+                    .bounds([y_bounds.0, y_bounds.1]),
+            );
+
+        frame.render_widget(chart, area);
+    }
     fn render_freqs(&self, frame: &mut Frame, area: Rect) {
         if self.freq_data.data.len() == 0 {
             return;
@@ -170,21 +246,16 @@ impl App {
                     .data(c)
             })
             .collect::<Vec<_>>();
-        // let datasets = vec![
-        //     Dataset::default()
-        //         .name("freq")
-        //         .marker(symbols::Marker::Braille)
-        //         .style(Style::default().fg(Color::Cyan))
-        //         // .graph_type(ratatui::widgets::GraphType::Line)
-        //         .data(&self.freq_data.data),
-        // ];
 
-        let dlen = datasets.len();
         let chart = Chart::new(datasets)
-            .block(Block::bordered())
+            .block(
+                Block::bordered()
+                    .title("Frequencies")
+                    .title_alignment(ratatui::layout::Alignment::Center),
+            )
             .x_axis(
                 Axis::default()
-                    .title(format!("Frequency {}", dlen))
+                    .title(format!("Frequency"))
                     .style(Style::default().fg(Color::Gray))
                     .labels(x_labels)
                     .bounds([x_bounds.0, x_bounds.1]),
@@ -193,7 +264,10 @@ impl App {
                 Axis::default()
                     .title("Magnitude")
                     .style(Style::default().fg(Color::Gray))
-                    // .labels(["-20".into(), "0".into(), "20".into()])
+                    .labels(vec![
+                        Span::styled("0", Style::default()),
+                        Span::styled("40", Style::default()),
+                    ])
                     .bounds([0.0, 40.0]),
             );
 

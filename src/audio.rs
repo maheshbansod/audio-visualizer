@@ -15,6 +15,7 @@ pub struct FreqData {
     pub max_magnitude: f64,
     pub sample_rate: u32,
     pub samples_n: usize,
+    pub time_domain_samples: Vec<f32>,
 }
 // type FreqData = Vec<(f64, f64)>;
 
@@ -96,6 +97,7 @@ impl AudioListener {
                                     peak_frequency: max_magnitude_freq,
                                     samples_n: n,
                                     sample_rate,
+                                    time_domain_samples: samples.clone(),
                                 })
                                 .unwrap();
                             // println!(
