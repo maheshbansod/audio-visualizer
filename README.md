@@ -2,8 +2,6 @@
 
 A real-time audio analysis TUI tool that visualizes frequency and time domain data in a terminal user interface.
 
-Originally, I created it to analyse the notes for my flute, but admittedly, the notes are not that accurate
-and I'm not sure when I'll get time to look into that.
 
 ![Screenshot of this TUI running](./assets/screenshot.png "Screenshot of this TUI running")
 
