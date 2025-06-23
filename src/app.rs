@@ -1,9 +1,12 @@
 use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+    str::FromStr,
     sync::mpsc,
     time::{Duration, Instant},
 };
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Error, Result};
 use ratatui::{
     DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode},
@@ -17,8 +20,9 @@ use ratatui::{
 use crate::audio::{AudioListener, FreqData, get_note_from_frequency};
 
 enum AppScreen {
-    Main,
-    FreqChart,
+    Debug,
+    Tutor,
+    Help,
 }
 
 pub enum TerminalMessage {
@@ -28,10 +32,18 @@ pub enum TerminalMessage {
 pub struct App {
     freq_data: FreqData,
     screen: AppScreen,
+    input_file_path: Option<PathBuf>,
+    tutor: Option<Tutor>,
 }
 impl App {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(input_file_path: Option<String>) -> Result<Self> {
+        let input_file_path = input_file_path.map(|i| PathBuf::from(i));
+        let tutor = if let Some(input_file_path) = &input_file_path {
+            Some(Self::set_tutor(input_file_path)?)
+        } else {
+            None
+        };
+        Ok(Self {
             freq_data: FreqData {
                 data: vec![],
                 max_magnitude: 0.0,
@@ -41,8 +53,14 @@ impl App {
                 sample_rate: 0,
                 time_domain_samples: vec![],
             },
-            screen: AppScreen::Main,
-        }
+            screen: if input_file_path.is_some() {
+                AppScreen::Tutor
+            } else {
+                AppScreen::Debug
+            },
+            input_file_path,
+            tutor,
+        })
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
@@ -63,9 +81,11 @@ impl App {
                         tx_to_audio.send(TerminalMessage::Quit).unwrap();
                         break;
                     } else if key.code == KeyCode::Char('d') {
-                        self.screen = AppScreen::FreqChart;
-                    } else if key.code == KeyCode::Char('m') {
-                        self.screen = AppScreen::Main
+                        self.set_screen(AppScreen::Debug)?;
+                    } else if key.code == KeyCode::Char('t') {
+                        self.set_screen(AppScreen::Tutor)?;
+                    } else if key.code == KeyCode::Char('h') {
+                        self.set_screen(AppScreen::Help)?;
                     }
                 }
             }
@@ -85,15 +105,120 @@ impl App {
     }
     fn on_tick(&mut self, data: FreqData) {
         self.freq_data = data;
+        if self.freq_data.max_magnitude > 10.0 {
+            if let Some(note) = get_note_from_frequency(self.freq_data.fundamental_frequency) {
+                if let Some(tutor) = self.tutor.as_mut() {
+                    if let Some(next_note) = tutor.notes_sequence.get(tutor.current_note_index) {
+                        if let Ok(current_note) = note.parse::<MusicalNote>() {
+                            if let MusicalSound::Note(next_note) = next_note {
+                                if current_note == *next_note
+                                    && tutor.current_note_index < tutor.notes_sequence.len()
+                                {
+                                    let mut next_idx = tutor.current_note_index + 1;
+                                    if next_idx >= tutor.notes_sequence.len() {
+                                        tutor.current_note_index = next_idx;
+                                    } else {
+                                        while next_idx < tutor.notes_sequence.len()
+                                            && matches!(
+                                                tutor.notes_sequence[next_idx],
+                                                MusicalSound::Silence
+                                            )
+                                        {
+                                            next_idx = next_idx + 1;
+                                        }
+                                        tutor.current_note_index = next_idx;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    }
+    fn set_screen(&mut self, screen: AppScreen) -> Result<()> {
+        match screen {
+            AppScreen::Tutor => {
+                self.reset_tutor()?;
+            }
+            _ => {}
+        }
+        self.screen = screen;
+        Ok(())
+    }
+    fn reset_tutor(&mut self) -> Result<()> {
+        if let Some(input_file_path) = &self.input_file_path {
+            self.tutor = Some(Self::set_tutor(input_file_path)?);
+        } else {
+            self.tutor = None;
+        }
+        Ok(())
+    }
+    fn set_tutor(input_file_path: &Path) -> Result<Tutor> {
+        // if let Some(input_file) = &input_file_path {
+        let file_content = std::fs::read_to_string(&input_file_path)?;
+        let musical_sounds = Self::parse_musical_sounds(file_content)?;
+        Ok(Tutor::new(musical_sounds))
+        // } else {
+        //     None
+        // }
+    }
+    fn parse_musical_sounds(file_content: String) -> Result<Vec<MusicalSound>> {
+        let lines = file_content
+            .lines()
+            .map(|line| {
+                line.split(",")
+                    .map(|n| n.parse::<MusicalNote>().map(|n| MusicalSound::Note(n)))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .collect::<Result<Vec<_>, Error>>()
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let sounds = itertools::intersperse(lines, vec![MusicalSound::Silence])
+            .flatten()
+            .collect::<Vec<_>>();
+        Ok(sounds)
     }
     fn draw(&self, frame: &mut Frame) {
         match self.screen {
-            AppScreen::FreqChart => {
-                let area = frame.area();
-
-                self.render_freqs(frame, area);
+            AppScreen::Tutor => {
+                let layout = frame.area();
+                if let Some(tutor) = &self.tutor {
+                    let mut lines = vec![];
+                    let mut spans = vec![];
+                    for (i, sound) in tutor.notes_sequence.iter().enumerate() {
+                        match sound {
+                            MusicalSound::Note(n) => {
+                                let content = n.to_string();
+                                let span = Span::styled(
+                                    content,
+                                    if tutor.current_note_index == i {
+                                        Style::default().add_modifier(Modifier::BOLD)
+                                    } else {
+                                        Style::default()
+                                    },
+                                );
+                                spans.push(span);
+                            }
+                            MusicalSound::Silence => {
+                                lines.push(Line::from(spans).centered());
+                                spans = vec![];
+                            }
+                        }
+                    }
+                    if !spans.is_empty() {
+                        lines.push(Line::from(spans).centered());
+                    }
+                    let text = Text::from(lines);
+                    frame.render_widget(text, layout);
+                } else {
+                    frame.render_widget(
+                        Line::from(format!("Error state: {:?}", self.input_file_path)),
+                        layout,
+                    );
+                }
             }
-            AppScreen::Main => {
+            AppScreen::Debug => {
                 let layout = Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
@@ -140,6 +265,9 @@ impl App {
                 );
                 self.render_freqs(frame, middle);
                 self.render_time_domain(frame, bottom);
+            }
+            AppScreen::Help => {
+                todo!()
             }
         }
     }
@@ -277,5 +405,92 @@ impl App {
             );
 
         frame.render_widget(chart, area);
+    }
+}
+
+struct Tutor {
+    notes_sequence: Vec<MusicalSound>,
+    current_note_index: usize,
+}
+
+#[derive(Clone, Debug)]
+enum MusicalSound {
+    Silence,
+    Note(MusicalNote),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum MusicalNote {
+    A,
+    ASharp,
+    B,
+    BSharp,
+    C,
+    CSharp,
+    D,
+    DSharp,
+    E,
+    ESharp,
+    F,
+    FSharp,
+    G,
+    GSharp,
+}
+
+impl FromStr for MusicalNote {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s {
+            "A" => MusicalNote::A,
+            "A#" => MusicalNote::ASharp,
+            "B" => MusicalNote::B,
+            "B#" => MusicalNote::BSharp,
+            "C" => MusicalNote::C,
+            "C#" => MusicalNote::CSharp,
+            "D" => MusicalNote::D,
+            "D#" => MusicalNote::DSharp,
+            "E" => MusicalNote::E,
+            "E#" => MusicalNote::ESharp,
+            "F" => MusicalNote::F,
+            "F#" => MusicalNote::FSharp,
+            "G" => MusicalNote::G,
+            "G#" => MusicalNote::GSharp,
+            _ => return Err(Error::msg("couldn't parse")),
+        })
+    }
+}
+
+impl Display for MusicalNote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MusicalNote::A => "A",
+                MusicalNote::ASharp => "A#",
+                MusicalNote::B => "B",
+                MusicalNote::BSharp => "B#",
+                MusicalNote::C => "C",
+                MusicalNote::CSharp => "C#",
+                MusicalNote::D => "D",
+                MusicalNote::DSharp => "D#",
+                MusicalNote::E => "E",
+                MusicalNote::ESharp => "E#",
+                MusicalNote::F => "F",
+                MusicalNote::FSharp => "F#",
+                MusicalNote::G => "G",
+                MusicalNote::GSharp => "G#",
+            },
+        )
+    }
+}
+
+impl Tutor {
+    fn new(notes: Vec<MusicalSound>) -> Self {
+        Self {
+            notes_sequence: notes,
+            current_note_index: 0,
+        }
     }
 }
