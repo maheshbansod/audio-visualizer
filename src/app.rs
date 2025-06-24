@@ -232,9 +232,14 @@ impl App {
 
                     frame.render_widget(text, layout);
                 } else {
+                    let layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .split(frame.area());
+                    self.show_help(frame, layout[0]);
                     frame.render_widget(
-                        Line::from(format!("Error state: {:?}", self.input_file_path)),
-                        layout,
+                        Line::from("You need to pass a file as an argument to see the notes here."),
+                        layout[1],
                     );
                 }
             }
@@ -287,9 +292,19 @@ impl App {
                 self.render_time_domain(frame, bottom);
             }
             AppScreen::Help => {
-                todo!()
+                self.show_help(frame, frame.area());
             }
         }
+    }
+
+    fn show_help(&self, frame: &mut Frame, area: Rect) {
+        let mut lines = vec![];
+        lines.push(Line::from("h: help"));
+        lines.push(Line::from("d: debug and visualization"));
+        lines.push(Line::from("t: tutor"));
+        lines.push(Line::from("q: quit"));
+        let text = Text::from(lines).centered();
+        frame.render_widget(text, area);
     }
 
     fn render_time_domain(&self, frame: &mut Frame, area: Rect) {
