@@ -184,7 +184,19 @@ impl App {
             AppScreen::Tutor => {
                 let layout = frame.area();
                 if let Some(tutor) = &self.tutor {
+                    let note = get_note_from_frequency(self.freq_data.fundamental_frequency);
                     let mut lines = vec![];
+                    lines.push(
+                        Line::from(format!(
+                            "Current note: {}",
+                            if let Some(note) = note {
+                                note.to_string()
+                            } else {
+                                "Unknown".to_string()
+                            }
+                        ))
+                        .centered(),
+                    );
                     let mut spans = vec![];
                     for (i, sound) in tutor.notes_sequence.iter().enumerate() {
                         match sound {
@@ -194,6 +206,8 @@ impl App {
                                     content,
                                     if tutor.current_note_index == i {
                                         Style::default().add_modifier(Modifier::BOLD)
+                                    } else if tutor.current_note_index < i {
+                                        Style::default().fg(Color::Gray)
                                     } else {
                                         Style::default()
                                     },
@@ -209,7 +223,13 @@ impl App {
                     if !spans.is_empty() {
                         lines.push(Line::from(spans).centered());
                     }
+                    if tutor.current_note_index >= tutor.notes_sequence.len() {
+                        lines.push(Line::from(
+                            "Congratulations!! You have completed this.. let's gooo",
+                        ));
+                    }
                     let text = Text::from(lines);
+
                     frame.render_widget(text, layout);
                 } else {
                     frame.render_widget(
