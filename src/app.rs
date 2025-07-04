@@ -48,7 +48,7 @@ impl App {
                 data: vec![],
                 max_magnitude: 0.0,
                 peak_frequency: 0,
-                fundamental_frequency: 0,
+                fundamental_frequency: 0.0,
                 samples_n: 0,
                 sample_rate: 0,
                 time_domain_samples: vec![],

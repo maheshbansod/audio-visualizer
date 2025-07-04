@@ -12,7 +12,7 @@ use crate::app::TerminalMessage;
 pub struct FreqData {
     pub data: Vec<(f64, f64)>,
     pub peak_frequency: u32,
-    pub fundamental_frequency: u32,
+    pub fundamental_frequency: f32,
     pub max_magnitude: f64,
     pub sample_rate: u32,
     pub samples_n: usize,
@@ -80,7 +80,7 @@ impl AudioListener {
 
                             let max_k = n / 2 + 1;
                             let mut downsampled_spectra = vec![];
-                            let mut smallest_len = 1000000;
+                            let mut smallest_len = usize::MAX;
                             for i in 2..5 {
                                 let downsampled_spectrum = (0..max_k)
                                     .step_by(i)
@@ -112,8 +112,19 @@ impl AudioListener {
                                     max_product_spectrum = log_psi;
                                 }
                             }
+                            // quadratic interpolation gang
+                            let multiplier_index = if max_product_spectrum_i != 0 {
+                                let yc = buffer[max_product_spectrum_i].norm();
+                                let yl = buffer[max_product_spectrum_i - 1].norm();
+                                let yr = buffer[max_product_spectrum_i + 1].norm();
+                                let p = 0.5 * (yl - yr) / (yl - 2.0 * yc + yr);
+                                let interpolated_index = max_product_spectrum_i as f32 + p;
+                                interpolated_index
+                            } else {
+                                max_product_spectrum_i as f32
+                            };
                             let fundamental_frequency =
-                                max_product_spectrum_i as u32 * sample_rate / n as u32;
+                                multiplier_index * sample_rate as f32 / n as f32;
 
                             let mut max_magnitude_freq = 0;
                             let mut max_magnitude = buffer[0].norm();
@@ -178,15 +189,15 @@ impl AudioListener {
     }
 }
 
-fn note_from_midi_note_number(midi_note_number: i32) -> String {
+fn note_from_midi_note_number(midi_note_number: usize) -> String {
     let i = midi_note_number % 12;
-    format!("{}", NOTES[i as usize])
+    NOTES[i].to_string()
 }
-pub fn get_note_from_frequency(freq: u32) -> Option<String> {
-    let midi_note_number = (12.0 * (freq as f32 / 440.0).log2() + 69.0).round();
+pub fn get_note_from_frequency(freq: f32) -> Option<String> {
+    let midi_note_number = (12.0 * (freq / 440.0).log2() + 69.0).round();
     midi_note_number
         .is_finite()
-        .then(|| note_from_midi_note_number(midi_note_number as i32))
+        .then(|| note_from_midi_note_number(midi_note_number as usize))
 }
 const NOTES: [&str; 12] = [
     "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
