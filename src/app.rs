@@ -47,7 +47,7 @@ impl App {
             freq_data: FreqData {
                 data: vec![],
                 max_magnitude: 0.0,
-                peak_frequency: 0,
+                peak_frequency: 0.0,
                 fundamental_frequency: 0.0,
                 samples_n: 0,
                 sample_rate: 0,
@@ -295,11 +295,12 @@ impl App {
     }
 
     fn show_help(&self, frame: &mut Frame, area: Rect) {
-        let mut lines = vec![];
-        lines.push(Line::from("h: help"));
-        lines.push(Line::from("d: debug and visualization"));
-        lines.push(Line::from("t: tutor"));
-        lines.push(Line::from("q: quit"));
+        let lines = vec![
+            Line::from("h: help"),
+            Line::from("d: debug and visualization"),
+            Line::from("t: tutor"),
+            Line::from("q: quit"),
+        ];
         let text = Text::from(lines).centered();
         frame.render_widget(text, area);
     }

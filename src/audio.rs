@@ -11,9 +11,9 @@ use crate::app::TerminalMessage;
 
 pub struct FreqData {
     pub data: Vec<(f64, f64)>,
-    pub peak_frequency: u32,
+    pub peak_frequency: f32,
     pub fundamental_frequency: f32,
-    pub max_magnitude: f64,
+    pub max_magnitude: f32,
     pub sample_rate: u32,
     pub samples_n: usize,
     pub time_domain_samples: Vec<f32>,
@@ -118,7 +118,7 @@ impl AudioListener {
                                 let yl = buffer[max_product_spectrum_i - 1].norm();
                                 let yr = buffer[max_product_spectrum_i + 1].norm();
                                 let p = 0.5 * (yl - yr) / (yl - 2.0 * yc + yr);
-                                
+
                                 max_product_spectrum_i as f32 + p
                             } else {
                                 max_product_spectrum_i as f32
@@ -126,13 +126,13 @@ impl AudioListener {
                             let fundamental_frequency =
                                 multiplier_index * sample_rate as f32 / n as f32;
 
-                            let mut max_magnitude_freq = 0;
+                            let mut max_magnitude_freq = 0.0;
                             let mut max_magnitude = buffer[0].norm();
                             let mut freq_data = vec![];
-                            for i in 0..max_k {
-                                let freq = i as u32 * sample_rate / n as u32;
-                                let magnitude = buffer[i].norm();
-                                if freq <= 1500 {
+                            for (i, raw_magnitude) in buffer.iter().enumerate().take(max_k) {
+                                let freq = i as f32 * sample_rate as f32 / n as f32;
+                                let magnitude = raw_magnitude.norm();
+                                if freq <= 1500.0 {
                                     freq_data.push((freq as f64, magnitude as f64));
                                 }
                                 if magnitude > max_magnitude {
@@ -143,7 +143,7 @@ impl AudioListener {
                             freq_dump_channel
                                 .send(FreqData {
                                     data: freq_data,
-                                    max_magnitude: max_magnitude as f64,
+                                    max_magnitude,
                                     peak_frequency: max_magnitude_freq,
                                     fundamental_frequency,
                                     samples_n: n,
