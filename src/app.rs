@@ -7,15 +7,17 @@ use std::{
 };
 
 use color_eyre::eyre::{Error, Result};
+use itertools::Itertools;
 use ratatui::{
     DefaultTerminal, Frame,
     crossterm::event::{self, Event, KeyCode},
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     symbols,
     text::{Line, Span, Text},
     widgets::{Axis, Block, Chart, Dataset, Paragraph},
 };
+use tracing::debug;
 
 use crate::audio::{AudioListener, FreqData, get_note_from_frequency};
 
@@ -29,11 +31,22 @@ pub enum TerminalMessage {
     Quit,
 }
 
+type Frequency = f32;
+
+// should i make it enum ? idk
+type Note = String;
+
+struct NoteHistoryItem {
+    note: Note,
+    frequency: Frequency,
+}
+
 pub struct App {
     freq_data: FreqData,
     screen: AppScreen,
     input_file_path: Option<PathBuf>,
     tutor: Option<Tutor>,
+    note_history: Vec<NoteHistoryItem>,
 }
 impl App {
     pub fn new(input_file_path: Option<String>) -> Result<Self> {
@@ -60,6 +73,7 @@ impl App {
             },
             input_file_path,
             tutor,
+            note_history: vec![],
         })
     }
 
@@ -105,7 +119,21 @@ impl App {
     }
     fn on_tick(&mut self, data: FreqData) {
         self.freq_data = data;
+        if let Some(note) = get_note_from_frequency(self.freq_data.fundamental_frequency) {
+            let f = self.freq_data.fundamental_frequency;
+            if self.freq_data.max_magnitude > 5.0
+                && self.note_history.last().is_none_or(|n| {
+                    get_note_from_frequency(f) != get_note_from_frequency(n.frequency)
+                })
+            {
+                self.note_history.push(NoteHistoryItem {
+                    note,
+                    frequency: self.freq_data.fundamental_frequency,
+                });
+            }
+        }
         if self.freq_data.max_magnitude > 10.0 {
+            // chekc if if let chain are stable at this point
             if let Some(note) = get_note_from_frequency(self.freq_data.fundamental_frequency) {
                 if let Some(tutor) = self.tutor.as_mut() {
                     if let Some(next_note) = tutor.notes_sequence.get(tutor.current_note_index) {
@@ -181,13 +209,13 @@ impl App {
             AppScreen::Tutor => {
                 let layout = frame.area();
                 if let Some(tutor) = &self.tutor {
-                    let note = get_note_from_frequency(self.freq_data.fundamental_frequency);
+                    let note = self.note_history.last();
                     let mut lines = vec![];
                     lines.push(
                         Line::from(format!(
                             "Current note: {}",
                             if let Some(note) = note {
-                                note.to_string()
+                                note.note.to_string()
                             } else {
                                 "Unknown".to_string()
                             }
@@ -245,13 +273,15 @@ impl App {
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
                         Constraint::Length(5),
+                        Constraint::Length(1),
                         Constraint::Ratio(1, 2),
                         Constraint::Ratio(1, 2),
                     ])
                     .split(frame.area());
                 let top = layout[0];
-                let middle = layout[1];
-                let bottom = layout[2];
+                let history_line_area = layout[1];
+                let middle = layout[2];
+                let bottom = layout[3];
                 let note = get_note_from_frequency(self.freq_data.fundamental_frequency);
                 let peak_freq_text = format!("Peak frequency: {}", self.freq_data.peak_frequency);
                 let max_magnitude_text = format!("Max Magnitude: {}", self.freq_data.max_magnitude);
@@ -277,6 +307,30 @@ impl App {
                     Line::from(format!("Sample rate: {}", self.freq_data.sample_rate)),
                     Line::from(max_magnitude_text),
                 ]);
+                let history_items_space_available = history_line_area.width / 3;
+                debug!("available len: {history_items_space_available}");
+                frame.render_widget(
+                    Text::from(Line::from(vec![
+                        Span::default()
+                            .content(
+                                self.note_history.last().map_or_else(
+                                    || String::from("| "),
+                                    |m| format!("| {} | ", m.note),
+                                ),
+                            )
+                            .bold(),
+                        Span::default().content(
+                            self.note_history[0..(history_items_space_available as usize)
+                                .min(self.note_history.len())]
+                                .iter()
+                                .rev()
+                                .skip(1)
+                                .map(|n| format!("{} ", n.note))
+                                .join("|"),
+                        ),
+                    ])),
+                    history_line_area,
+                );
                 frame.render_widget(
                     Paragraph::new(text_left).block(Block::bordered()),
                     top_layout[0],
