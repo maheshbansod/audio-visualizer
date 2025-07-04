@@ -272,7 +272,7 @@ impl App {
                 let layout = Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
-                        Constraint::Length(5),
+                        Constraint::Length(4),
                         Constraint::Length(1),
                         Constraint::Ratio(1, 2),
                         Constraint::Ratio(1, 2),
@@ -286,12 +286,6 @@ impl App {
                 let peak_freq_text = format!("Peak frequency: {}", self.freq_data.peak_frequency);
                 let max_magnitude_text = format!("Max Magnitude: {}", self.freq_data.max_magnitude);
                 let text_left = Text::from(vec![
-                    Line::from(if let Some(note) = note {
-                        format!("Note: {note}")
-                    } else {
-                        "Note: unknown".to_string()
-                    })
-                    .centered(),
                     Line::from(peak_freq_text),
                     Line::from(format!(
                         "Fundamental frequency (HPS): {}",
@@ -301,14 +295,36 @@ impl App {
                 .centered();
                 let top_layout = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                    .constraints([
+                        Constraint::Ratio(1, 3),
+                        Constraint::Ratio(1, 3),
+                        Constraint::Ratio(1, 3),
+                    ])
                     .split(top);
                 let text_right = Text::from(vec![
                     Line::from(format!("Sample rate: {}", self.freq_data.sample_rate)),
                     Line::from(max_magnitude_text),
                 ]);
+                frame.render_widget(
+                    Paragraph::new(text_left).block(Block::bordered()),
+                    top_layout[0],
+                );
+
+                let note_text = Line::from(if let Some(note) = note {
+                    format!("Note: {note}")
+                } else {
+                    "Note: unknown".to_string()
+                })
+                .centered();
+                frame.render_widget(
+                    Paragraph::new(note_text).block(Block::bordered()),
+                    top_layout[1],
+                );
+                frame.render_widget(
+                    Paragraph::new(text_right).block(Block::bordered()),
+                    top_layout[2],
+                );
                 let history_items_space_available = history_line_area.width / 3;
-                debug!("available len: {history_items_space_available}");
                 frame.render_widget(
                     Text::from(Line::from(vec![
                         Span::default()
@@ -331,14 +347,7 @@ impl App {
                     ])),
                     history_line_area,
                 );
-                frame.render_widget(
-                    Paragraph::new(text_left).block(Block::bordered()),
-                    top_layout[0],
-                );
-                frame.render_widget(
-                    Paragraph::new(text_right).block(Block::bordered()),
-                    top_layout[1],
-                );
+
                 self.render_freqs(frame, middle);
                 self.render_time_domain(frame, bottom);
             }
