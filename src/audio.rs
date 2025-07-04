@@ -118,8 +118,8 @@ impl AudioListener {
                                 let yl = buffer[max_product_spectrum_i - 1].norm();
                                 let yr = buffer[max_product_spectrum_i + 1].norm();
                                 let p = 0.5 * (yl - yr) / (yl - 2.0 * yc + yr);
-                                let interpolated_index = max_product_spectrum_i as f32 + p;
-                                interpolated_index
+                                
+                                max_product_spectrum_i as f32 + p
                             } else {
                                 max_product_spectrum_i as f32
                             };

@@ -37,7 +37,7 @@ pub struct App {
 }
 impl App {
     pub fn new(input_file_path: Option<String>) -> Result<Self> {
-        let input_file_path = input_file_path.map(|i| PathBuf::from(i));
+        let input_file_path = input_file_path.map(PathBuf::from);
         let tutor = if let Some(input_file_path) = &input_file_path {
             Some(Self::set_tutor(input_file_path)?)
         } else {
@@ -124,7 +124,7 @@ impl App {
                                                 MusicalSound::Silence
                                             )
                                         {
-                                            next_idx = next_idx + 1;
+                                            next_idx += 1;
                                         }
                                         tutor.current_note_index = next_idx;
                                     }
@@ -137,11 +137,8 @@ impl App {
         }
     }
     fn set_screen(&mut self, screen: AppScreen) -> Result<()> {
-        match screen {
-            AppScreen::Tutor => {
-                self.reset_tutor()?;
-            }
-            _ => {}
+        if let AppScreen::Tutor = screen {
+            self.reset_tutor()?;
         }
         self.screen = screen;
         Ok(())
@@ -156,7 +153,7 @@ impl App {
     }
     fn set_tutor(input_file_path: &Path) -> Result<Tutor> {
         // if let Some(input_file) = &input_file_path {
-        let file_content = std::fs::read_to_string(&input_file_path)?;
+        let file_content = std::fs::read_to_string(input_file_path)?;
         let musical_sounds = Self::parse_musical_sounds(file_content)?;
         Ok(Tutor::new(musical_sounds))
         // } else {
@@ -168,7 +165,7 @@ impl App {
             .lines()
             .map(|line| {
                 line.split(",")
-                    .map(|n| n.parse::<MusicalNote>().map(|n| MusicalSound::Note(n)))
+                    .map(|n| n.parse::<MusicalNote>().map(MusicalSound::Note))
                     .collect::<Vec<_>>()
                     .into_iter()
                     .collect::<Result<Vec<_>, Error>>()
@@ -308,7 +305,7 @@ impl App {
     }
 
     fn render_time_domain(&self, frame: &mut Frame, area: Rect) {
-        if self.freq_data.time_domain_samples.len() == 0 {
+        if self.freq_data.time_domain_samples.is_empty() {
             return;
         }
         let data = self.freq_data.time_domain_samples.clone();
@@ -345,7 +342,7 @@ impl App {
             )
             .x_axis(
                 Axis::default()
-                    .title(format!("Time"))
+                    .title("Time".to_string())
                     .style(Style::default().fg(Color::Gray))
                     .labels(x_labels)
                     .bounds([x_bounds.0 as f64, x_bounds.1 as f64]),
@@ -364,7 +361,7 @@ impl App {
         frame.render_widget(chart, area);
     }
     fn render_freqs(&self, frame: &mut Frame, area: Rect) {
-        if self.freq_data.data.len() == 0 {
+        if self.freq_data.data.is_empty() {
             return;
         }
         // let n = self.freq_data.data.len() / 4;
@@ -423,7 +420,7 @@ impl App {
             )
             .x_axis(
                 Axis::default()
-                    .title(format!("Frequency"))
+                    .title("Frequency".to_string())
                     .style(Style::default().fg(Color::Gray))
                     .labels(x_labels)
                     .bounds([x_bounds.0, x_bounds.1]),

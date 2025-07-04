@@ -21,14 +21,14 @@ fn project_directory() -> Option<ProjectDirs> {
 }
 
 pub fn get_data_dir() -> PathBuf {
-    let directory = if let Some(s) = DATA_FOLDER.clone() {
+    
+    if let Some(s) = DATA_FOLDER.clone() {
         s
     } else if let Some(proj_dirs) = project_directory() {
         proj_dirs.data_local_dir().to_path_buf()
     } else {
         PathBuf::from(".").join(".data")
-    };
-    directory
+    }
 }
 
 pub fn initialize_logging() -> Result<()> {
