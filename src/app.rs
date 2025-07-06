@@ -17,7 +17,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Axis, Block, Chart, Dataset, Paragraph},
 };
-use tracing::debug;
 
 use crate::audio::{AudioListener, FreqData, get_note_from_frequency};
 
@@ -121,7 +120,7 @@ impl App {
         self.freq_data = data;
         if let Some(note) = get_note_from_frequency(self.freq_data.fundamental_frequency) {
             let f = self.freq_data.fundamental_frequency;
-            if self.freq_data.max_magnitude > 5.0
+            if self.freq_data.max_magnitude > 100.0
                 && self.note_history.last().is_none_or(|n| {
                     get_note_from_frequency(f) != get_note_from_frequency(n.frequency)
                 })
@@ -282,7 +281,10 @@ impl App {
                 let history_line_area = layout[1];
                 let middle = layout[2];
                 let bottom = layout[3];
-                let note = get_note_from_frequency(self.freq_data.fundamental_frequency);
+                let note = self
+                    .note_history
+                    .last()
+                    .map_or(" ".to_string(), |n| n.note.clone());
                 let peak_freq_text = format!("Peak frequency: {}", self.freq_data.peak_frequency);
                 let max_magnitude_text = format!("Max Magnitude: {}", self.freq_data.max_magnitude);
                 let text_left = Text::from(vec![
@@ -310,12 +312,7 @@ impl App {
                     top_layout[0],
                 );
 
-                let note_text = Line::from(if let Some(note) = note {
-                    format!("Note: {note}")
-                } else {
-                    "Note: unknown".to_string()
-                })
-                .centered();
+                let note_text = Line::from(note).centered();
                 frame.render_widget(
                     Paragraph::new(note_text).block(Block::bordered()),
                     top_layout[1],
@@ -324,7 +321,7 @@ impl App {
                     Paragraph::new(text_right).block(Block::bordered()),
                     top_layout[2],
                 );
-                let history_items_space_available = history_line_area.width / 3;
+                let history_items_space_available = (history_line_area.width / 3) as usize;
                 frame.render_widget(
                     Text::from(Line::from(vec![
                         Span::default()
@@ -336,8 +333,14 @@ impl App {
                             )
                             .bold(),
                         Span::default().content(
-                            self.note_history[0..(history_items_space_available as usize)
-                                .min(self.note_history.len())]
+                            self.note_history[(if self.note_history.len()
+                                > history_items_space_available
+                            {
+                                self.note_history.len() - history_items_space_available
+                            } else {
+                                0
+                            })
+                                ..self.note_history.len()]
                                 .iter()
                                 .rev()
                                 .skip(1)
